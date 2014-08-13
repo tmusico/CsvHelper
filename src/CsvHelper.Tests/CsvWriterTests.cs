@@ -336,6 +336,68 @@ namespace CsvHelper.Tests
 		}
 
         [TestMethod]
+        public void WriteRecordsFieldsQuotedOfTypeTest()
+        {
+            var record = new TestRecordOfTypes
+            {
+                IntColumn = 1,
+                StringColumn = "string column",
+                DateTimeColumn = new DateTime(2014,08,13)
+            };
+
+            string csv;
+            using (var stream = new MemoryStream())
+            using (var reader = new StreamReader(stream))
+            using (var writer = new StreamWriter(stream))
+            using (var csvWriter = new CsvWriter(writer))
+            {
+                csvWriter.Configuration.QuoteAllOfTypes = new[] { typeof( string ), typeof( DateTime ) };
+                csvWriter.Configuration.RegisterClassMap<TestTestRecordOfTypesMap>();
+                csvWriter.WriteRecord(record);
+
+                writer.Flush();
+                stream.Position = 0;
+
+                csv = reader.ReadToEnd();
+            }
+
+            var expected = "1,\"string column\",\"8/13/2014\"\r\n";
+
+            Assert.AreEqual(expected, csv);
+        }
+
+        [TestMethod]
+        public void WriteRecordsFieldsQuotedOfTypeWithQuotesTest()
+        {
+            var record = new TestRecordOfTypes
+            {
+                IntColumn = 1,
+                StringColumn = "one \"two\"",
+                DateTimeColumn = new DateTime(2014, 08, 13)
+            };
+
+            string csv;
+            using (var stream = new MemoryStream())
+            using (var reader = new StreamReader(stream))
+            using (var writer = new StreamWriter(stream))
+            using (var csvWriter = new CsvWriter(writer))
+            {
+                csvWriter.Configuration.QuoteAllOfTypes = new[] { typeof(string), typeof(DateTime) };
+                csvWriter.Configuration.RegisterClassMap<TestTestRecordOfTypesMap>();
+                csvWriter.WriteRecord(record);
+
+                writer.Flush();
+                stream.Position = 0;
+
+                csv = reader.ReadToEnd();
+            }
+
+            var expected = "1,\"one \"\"two\"\"\",\"8/13/2014\"\r\n";
+
+            Assert.AreEqual(expected, csv);
+        }
+
+        [TestMethod]
         public void WriteHeaderTest()
         {
             string csv;
@@ -788,6 +850,27 @@ namespace CsvHelper.Tests
 				Map( m => m.TypeConvertedColumn ).TypeConverter<TestTypeConverter>();
 			}
 		}
+
+        private class TestRecordOfTypes
+        {
+            public int IntColumn { get; set; }
+
+            public string StringColumn { get; set; }
+
+            public DateTime DateTimeColumn { get; set; }
+        }
+
+        private sealed class TestTestRecordOfTypesMap : CsvClassMap<TestRecordOfTypes>
+        {
+            public TestTestRecordOfTypesMap()
+            {
+                Map(m => m.IntColumn).Name("Int Column").Index(1).TypeConverter<Int32Converter>();
+                Map(m => m.StringColumn);
+                Map( m => m.DateTimeColumn )
+                    .TypeConverterOption(CultureInfo.CreateSpecificCulture("en-US"))
+                    .TypeConverterOption("d");
+            }
+        }
 
 		private class TestRecordNoIndexes
 		{

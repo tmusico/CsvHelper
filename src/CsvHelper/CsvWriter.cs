@@ -108,37 +108,56 @@ namespace CsvHelper
 		{
 			CheckDisposed();
 
-			var shouldQuote = configuration.QuoteAllFields;
+			var shouldQuote = ShouldQuote(ref field );
 
-			if( !configuration.QuoteNoFields && !string.IsNullOrEmpty( field ) )
-			{
-				var hasQuote = false;
+		    WriteField( field, shouldQuote );
+		}
+
+	    /// <summary>
+	    /// encapsulates the logic of weather or not to quote
+	    /// the field data, also looks at the global configuration
+	    /// options of <seealso cref="CsvConfiguration.QuoteAllFields"/> 
+	    /// and <seealso cref="CsvConfiguration.QuoteNoFields"/>.  
+	    /// This method does not evaluate 
+	    /// <seealso cref="CsvConfiguration.QuoteAllOfTypes"/>
+	    /// since the source data type if out of scope here
+	    /// </summary>
+	    /// <param name="field">The field to write.</param>
+	    /// <returns>weather or not the field data should be quoted based on 
+	    /// the QuoteAllFields, QuoteNoFields, and the contents of the field 
+	    /// itself</returns>
+	    protected bool ShouldQuote(ref string field )
+	    {
+	        var shouldQuote = configuration.QuoteAllFields;
+
+	        if( !configuration.QuoteNoFields && !string.IsNullOrEmpty( field ) )
+	        {
+	            var hasQuote = false;
 #if NET_2_0
 				if( EnumerableHelper.Contains( field, configuration.Quote ) )
 #else
-				if( field.Contains( configuration.QuoteString ) )
+	            if( field.Contains( configuration.QuoteString ) )
 #endif
-				{
-					// All quotes must be doubled.
-					field = field.Replace( configuration.QuoteString, configuration.DoubleQuoteString );
-					hasQuote = true;
-				}
+	            {
+	                // All quotes must be doubled.
+	                field = field.Replace( configuration.QuoteString, configuration.DoubleQuoteString );
+	                hasQuote = true;
+	            }
 
-				if( shouldQuote
-				    || hasQuote
-				    || field[0] == ' '
-				    || field[field.Length - 1] == ' '
-				    || field.IndexOfAny( configuration.QuoteRequiredChars ) > -1
-				    || ( configuration.Delimiter.Length > 1 && field.Contains( configuration.Delimiter ) ) )
-				{
-					shouldQuote = true;
-				}
-			}
+	            if( shouldQuote
+	                || hasQuote
+	                || field[0] == ' '
+	                || field[field.Length - 1] == ' '
+	                || field.IndexOfAny( configuration.QuoteRequiredChars ) > -1
+	                || ( configuration.Delimiter.Length > 1 && field.Contains( configuration.Delimiter ) ) )
+	            {
+	                shouldQuote = true;
+	            }
+	        }
+	        return shouldQuote;
+	    }
 
-			WriteField( field, shouldQuote );
-		}
-
-		/// <summary>
+	    /// <summary>
 		/// Writes the field to the CSV file. This will
 		/// ignore any need to quote and ignore the
 		/// <see cref="CsvConfiguration.QuoteAllFields"/>
@@ -170,19 +189,22 @@ namespace CsvHelper
 		/// </summary>
 		/// <typeparam name="T">The type of the field.</typeparam>
 		/// <param name="field">The field to write.</param>
-		public virtual void WriteField<T>( T field )
+        /// <param name="forceQuote">True to force quote the field, otherwise evaluate if quote is needed</param>
+        public virtual void WriteField<T>(T field, bool forceQuote = false)
 		{
 			CheckDisposed();
 
 			var type = typeof( T );
 			if( type == typeof( string ) )
 			{
-				WriteField( field as string );
+                var fieldString = field as string;
+                var shouldQuote = ShouldQuote(ref fieldString) || forceQuote; // order matters ... the should quote might change the field
+                WriteField(fieldString, shouldQuote);
 			}
 			else
 			{
 				var converter = TypeConverterFactory.GetConverter( type );
-				WriteField( field, converter );
+				WriteField( field, converter, forceQuote );
 			}
 		}
 
@@ -195,7 +217,8 @@ namespace CsvHelper
 		/// <typeparam name="T">The type of the field.</typeparam>
 		/// <param name="field">The field to write.</param>
 		/// <param name="converter">The converter used to convert the field into a string.</param>
-		public virtual void WriteField<T>( T field, ITypeConverter converter )
+        /// <param name="forceQuote">True to force quote the field, otherwise evaluate if quote is needed</param>
+        public virtual void WriteField<T>(T field, ITypeConverter converter, bool forceQuote = false)
 		{
 			CheckDisposed();
 
@@ -206,7 +229,8 @@ namespace CsvHelper
 			}
 
 			var fieldString = converter.ConvertToString( typeConverterOptions, field );
-			WriteField( fieldString );
+            var shouldQuote = ShouldQuote(ref fieldString) || forceQuote; // order matters ... the should quote might change the field, smells bad
+            WriteField(fieldString, shouldQuote);
 		}
 
 		/// <summary>
@@ -623,7 +647,7 @@ namespace CsvHelper
 					// Skip if the type isn't convertible.
 					continue;
 				}
-
+                
 				var fieldExpression = CreatePropertyExpression( recordParameter, configuration.Maps[type], propertyMap );
 
 				var typeConverterExpression = Expression.Constant( propertyMap.Data.TypeConverter );
@@ -645,7 +669,10 @@ namespace CsvHelper
 					fieldExpression = Expression.Condition( areEqualExpression, Expression.Constant( string.Empty ), fieldExpression );
 				}
 
-				var writeFieldMethodCall = Expression.Call( Expression.Constant( this ), "WriteField", new[] { typeof( string ) }, fieldExpression );
+			    var shouldQuoteExpression = ShouldQuoteExpression( propertyMap.Data.Property.PropertyType, fieldExpression );
+
+			    var writeFieldMethodCall = Expression.Call( Expression.Constant( this ), "WriteField", new[] { typeof( string ) }, fieldExpression,
+                    shouldQuoteExpression);
 
 				var actionType = typeof( Action<> ).MakeGenericType( type );
 				delegates.Add( Expression.Lambda( actionType, writeFieldMethodCall, recordParameter ).Compile() );
@@ -654,7 +681,19 @@ namespace CsvHelper
 			typeActions[type] = CombineDelegates( delegates );
 		}
 
-		/// <summary>
+	    private Expression ShouldQuoteExpression( Type propertyType, Expression fieldExpression )
+	    {
+	        Expression shouldQuoteExpression;
+	        {
+                // TODO: remove the or portion ... already done in the writefield
+	            var quoteType = ( configuration.QuoteAllOfTypes ?? new Type[0] )
+	                .Any( x => x == propertyType );
+	            shouldQuoteExpression = Expression.Constant( quoteType );
+	        }
+	        return shouldQuoteExpression;
+	    }
+
+	    /// <summary>
 		/// Creates the action for a primitive.
 		/// </summary>
 		/// <param name="type">The type of primitive to create the action for.</param>
@@ -676,7 +715,9 @@ namespace CsvHelper
 
 			fieldExpression = Expression.Call( typeConverterExpression, method, Expression.Constant( typeConverterOptions ), fieldExpression );
 
-			fieldExpression = Expression.Call( Expression.Constant( this ), "WriteField", new[] { typeof( string ) }, fieldExpression );
+            var shouldQuoteExpression = ShouldQuoteExpression(type, fieldExpression);
+            fieldExpression = Expression.Call(Expression.Constant(this), "WriteField", new[] { typeof(string) }, fieldExpression,
+                shouldQuoteExpression);
 
 			var actionType = typeof( Action<> ).MakeGenericType( type );
 			typeActions[type] = Expression.Lambda( actionType, fieldExpression, recordParameter ).Compile();

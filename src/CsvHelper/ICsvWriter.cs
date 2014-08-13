@@ -52,7 +52,8 @@ namespace CsvHelper
 		/// </summary>
 		/// <typeparam name="T">The type of the field.</typeparam>
 		/// <param name="field">The field to write.</param>
-		void WriteField<T>( T field );
+        /// <param name="forceQuote">True to force quote the field, otherwise evaluate if quote is needed</param>
+        void WriteField<T>(T field, bool forceQuote = false);
 
 		/// <summary>
 		/// Writes the field to the CSV file.
@@ -63,7 +64,8 @@ namespace CsvHelper
 		/// <typeparam name="T">The type of the field.</typeparam>
 		/// <param name="field">The field to write.</param>
 		/// <param name="converter">The converter used to convert the field into a string.</param>
-		void WriteField<T>( T field, ITypeConverter converter );
+        /// <param name="forceQuote">True to force quote the field, otherwise evaluate if quote is needed</param>
+        void WriteField<T>(T field, ITypeConverter converter, bool forceQuote = false);
 
 		/// <summary>
 		/// Writes the field to the CSV file

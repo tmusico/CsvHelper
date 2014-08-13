@@ -38,6 +38,7 @@ namespace CsvHelper.Configuration
 		private bool ignoreBlankLines = true;
 #if !NET_2_0
 		private readonly CsvClassMapCollection maps = new CsvClassMapCollection();
+	    private Type[] quoteAllOfTypes;
 #endif
 
 #if !NET_2_0
@@ -401,13 +402,33 @@ namespace CsvHelper.Configuration
 		/// </summary>
 		public virtual Action<Exception, ICsvReader> ReadingExceptionCallback { get; set; }
 
-		/// <summary>
-		/// Use a <see cref="CsvClassMap{T}" /> to configure mappings.
-		/// When using a class map, no properties are mapped by default.
-		/// Only properties specified in the mapping are used.
-		/// </summary>
-		/// <typeparam name="TMap">The type of mapping class to use.</typeparam>
-		public virtual void RegisterClassMap<TMap>() where TMap : CsvClassMap
+	    /// <summary>
+	    /// Gets or sets the types that you want to
+	    /// always quote. Setting this will unset
+	    /// <seealso cref="QuoteAllFields"/> and 
+	    /// <seealso cref="QuoteNoFields"/>
+	    /// </summary>
+	    public Type[] QuoteAllOfTypes
+	    {
+	        get { return quoteAllOfTypes; }
+	        set
+	        {
+	            quoteAllOfTypes = value;
+	            if( quoteAllOfTypes != null && quoteAllOfTypes.Length > 0 )
+	            {
+	                quoteNoFields = quoteAllFields = false;
+	            }
+                // TODO: fix quoteNo and quoteAll to unset quoteAllOfTypes
+	        }
+	    }
+
+	    /// <summary>
+	    /// Use a <see cref="CsvClassMap{T}" /> to configure mappings.
+	    /// When using a class map, no properties are mapped by default.
+	    /// Only properties specified in the mapping are used.
+	    /// </summary>
+	    /// <typeparam name="TMap">The type of mapping class to use.</typeparam>
+	    public virtual void RegisterClassMap<TMap>() where TMap : CsvClassMap
 		{
 			var map = ReflectionHelper.CreateInstance<TMap>();
 			RegisterClassMap( map );
